@@ -39,8 +39,13 @@
 #endif
 #endif /* CONFIG_BCM4335BT */
 
+/* Power on the device but do not allow rfkilling via GPIO */
+#define DISABLE_RFKILL 1
+
+#ifndef DISABLE_RFKILL
 static struct rfkill *bt_rfk;
 static const char bt_name[] = "brcm_Bluetooth_rfkill";
+#endif /* DISABLE_RFKILL */
 
 #ifdef CONFIG_BCM4335BT
 #define BTLOCK_NAME     "btlock"
@@ -194,14 +199,18 @@ static int bluetooth_set_power(void *data, bool blocked)
 	return 0;
 }
 
+#ifndef DISABLE_RFKILL
 static struct rfkill_ops bluetooth_rfkill_ops = {
 	.set_block = bluetooth_set_power,
 };
+#endif /* DISABLE_RFKILL */
 
 static int bluetooth_rfkill_probe(struct platform_device *pdev)
 {
 	int rc = 0;
+#ifndef DISABLE_RFKILL
 	bool default_state = true;  /* off */
+#endif /* DISABLE_RFKILL */
 
 #ifdef CONFIG_BCM4335BT
 	bcm_btlock_init();
@@ -220,6 +229,10 @@ static int bluetooth_rfkill_probe(struct platform_device *pdev)
 	}
 	gpio_direction_output(GPIO_BT_RESET_N, 0);
 
+#ifdef DISABLE_RFKILL
+	bluetooth_set_power(NULL, false);
+	return 0;
+#else
 	bluetooth_set_power(NULL, default_state);
 
 	bt_rfk = rfkill_alloc(bt_name, &pdev->dev, RFKILL_TYPE_BLUETOOTH,
@@ -244,6 +257,7 @@ static int bluetooth_rfkill_probe(struct platform_device *pdev)
 err_rfkill_reg:
 	rfkill_destroy(bt_rfk);
 err_rfkill_alloc:
+#endif /* DISABLE_RFKILL */
 err_gpio_reset:
 	gpio_free(GPIO_BT_RESET_N);
 	printk(KERN_ERR "bluetooth_rfkill_probe error!\n");
@@ -252,8 +266,10 @@ err_gpio_reset:
 
 static int bluetooth_rfkill_remove(struct platform_device *dev)
 {
+#ifndef DISABLE_RFKILL
 	rfkill_unregister(bt_rfk);
 	rfkill_destroy(bt_rfk);
+#endif /* DISABLE_RFKILL */
 	gpio_free(GPIO_BT_RESET_N);
 
 #ifdef CONFIG_BCM4335BT

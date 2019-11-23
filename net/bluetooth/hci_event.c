@@ -1665,14 +1665,14 @@ static inline void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 		if (test_bit(HCI_ENCRYPT, &hdev->flags))
 			conn->link_mode |= HCI_LM_ENCRYPT;
 
-		/* Get remote version */
+		/* Get remote features */
 		if (conn->type == ACL_LINK) {
-			struct hci_cp_read_remote_version cp;
+			struct hci_cp_read_remote_features cp;
 			cp.handle = ev->handle;
 			hci_send_cmd(hdev, HCI_OP_READ_CLOCK_OFFSET,
 				sizeof(cp), &cp);
-			hci_send_cmd(hdev, HCI_OP_READ_REMOTE_VERSION,
-				sizeof(cp), &cp);
+			hci_send_cmd(hdev, HCI_OP_READ_REMOTE_FEATURES,
+							sizeof(cp), &cp);
 		}
 
 		/* Set packet type for incoming connection */
@@ -1837,18 +1837,6 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
 	if (conn) {
-		if (ev->status == 0x06 && hdev->ssp_mode > 0 &&
-							conn->ssp_mode > 0) {
-			struct hci_cp_auth_requested cp;
-			hci_remove_link_key(hdev, &conn->dst);
-			cp.handle = cpu_to_le16(conn->handle);
-			hci_send_cmd(conn->hdev, HCI_OP_AUTH_REQUESTED,
-							sizeof(cp), &cp);
-			hci_dev_unlock(hdev);
-			BT_INFO("Pin or key missing");
-			return;
-		}
-
 		if (!ev->status) {
 			conn->link_mode |= HCI_LM_AUTH;
 			conn->sec_level = conn->pending_sec_level;
@@ -1882,29 +1870,11 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 
 		if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
 			if (!ev->status) {
-				if (conn->link_mode & HCI_LM_ENCRYPT) {
-					/* Encryption implies authentication */
-					conn->link_mode |= HCI_LM_AUTH;
-					conn->link_mode |= HCI_LM_ENCRYPT;
-					conn->sec_level =
-						conn->pending_sec_level;
-					clear_bit(HCI_CONN_ENCRYPT_PEND,
-							&conn->pend);
-					hci_encrypt_cfm(conn, ev->status, 1);
-
-					if (test_bit(HCI_MGMT, &hdev->flags))
-						mgmt_encrypt_change(hdev->id,
-							&conn->dst,
-							ev->status);
-
-				} else {
-					struct hci_cp_set_conn_encrypt cp;
-					cp.handle  = ev->handle;
-					cp.encrypt = 0x01;
-					hci_send_cmd(hdev,
-						HCI_OP_SET_CONN_ENCRYPT,
-						sizeof(cp), &cp);
-				}
+				struct hci_cp_set_conn_encrypt cp;
+				cp.handle  = ev->handle;
+				cp.encrypt = 0x01;
+				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
+							sizeof(cp), &cp);
 			} else {
 				clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
 				hci_encrypt_cfm(conn, ev->status, 0x00);
@@ -2070,24 +2040,7 @@ unlock:
 
 static inline void hci_remote_version_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
-	struct hci_ev_remote_version *ev = (void *) skb->data;
-	struct hci_cp_read_remote_features cp;
-	struct hci_conn *conn;
-	BT_DBG("%s status %d", hdev->name, ev->status);
-
-	hci_dev_lock(hdev);
-	cp.handle = ev->handle;
-	hci_send_cmd(hdev, HCI_OP_READ_REMOTE_FEATURES,
-				sizeof(cp), &cp);
-
-	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
-	if (!conn)
-		goto unlock;
-	if (!ev->status)
-		mgmt_remote_version(hdev->id, &conn->dst, ev->lmp_ver,
-				ev->manufacturer, ev->lmp_subver);
-unlock:
-	hci_dev_unlock(hdev);
+	BT_DBG("%s", hdev->name);
 }
 
 static inline void hci_qos_setup_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -2727,7 +2680,6 @@ static inline void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff 
 		conn->key_type = ev->key_type;
 		hci_disconnect_amp(conn, 0x06);
 
-		conn->link_mode &= ~HCI_LM_ENCRYPT;
 		pin_len = conn->pin_length;
 		hci_conn_put(conn);
 		hci_conn_enter_active_mode(conn, 0);
