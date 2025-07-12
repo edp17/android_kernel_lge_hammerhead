@@ -7,6 +7,7 @@ ifdef CONFIG_DEBUG_FS
 	hid-objs		+= hid-debug.o
 endif
 
+obj-y				+= hid-generic.o
 obj-$(CONFIG_HID)		+= hid.o
 obj-$(CONFIG_UHID)		+= uhid.o
 
@@ -26,7 +27,7 @@ ifdef CONFIG_LOGIWHEELS_FF
 	hid-logitech-y	+= hid-lg4ff.o
 endif
 
-hid-wiimote-y		:= hid-wiimote-core.o
+te-debug.ohid-wiimote-y		:= hid-wiimote-core.o
 ifdef CONFIG_HID_WIIMOTE_EXT
 	hid-wiimote-y	+= hid-wiimote-ext.o
 endif
