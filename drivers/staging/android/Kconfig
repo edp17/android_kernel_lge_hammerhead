@@ -12,6 +12,20 @@ config ANDROID_BINDER_IPC
 	bool "Android Binder IPC Driver"
 	default n
 
+config ANDROID_BINDER_IPC_32BIT
+    bool "Use old 32-bit binder API"
+    depends on ANDROID_BINDER_IPC
+    default y
+    help
+      Enable this to support old 32-bit Android userspace.
+
+config ANDROID_BINDER_DEVICES
+    string "Android Binder devices"
+    depends on ANDROID_BINDER_IPC
+    default "binder"
+    help
+      Default value for the binder.devices parameter.
+
 config ASHMEM
 	bool "Enable the Anonymous Shared Memory Subsystem"
 	default n
