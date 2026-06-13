@@ -37,6 +37,7 @@
 #include <asm/mmu_context.h>
 
 #include "internal.h"
+#include <linux/string.h>
 
 #ifndef arch_mmap_check
 #define arch_mmap_check(addr, len, flags)	(0)
@@ -45,6 +46,22 @@
 #ifndef arch_rebalance_pgtables
 #define arch_rebalance_pgtables(addr, len)		(addr)
 #endif
+
+static const char *waydroid_mmap_file_name(struct file *file)
+{
+    if (!file || !file->f_path.dentry)
+	return "anon";
+
+    return (const char *)file->f_path.dentry->d_name.name;
+}
+
+static int waydroid_mmap_dbg_task(void)
+{
+    return !strcmp(current->comm, "sh") ||
+           !strcmp(current->comm, "linker") ||
+           !strcmp(current->comm, "toybox") ||
+           !strcmp(current->comm, "init");
+}
 
 static void unmap_region(struct mm_struct *mm,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
@@ -1093,6 +1110,14 @@ static unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 	if (error)
 		return error;
 
+    if (unlikely(waydroid_mmap_dbg_task())) {
+	pr_emerg("WMMAP: do_mmap_pgoff comm=%s pid=%d file=%s addr=%lx len=%lx prot=%lx flags=%lx vm_flags=%lx pgoff=%lx map_count=%d\n",
+	     current->comm, task_pid_nr(current),
+	     waydroid_mmap_file_name(file),
+	     addr, len, prot, flags, vm_flags, pgoff,
+	     current->mm ? current->mm->map_count : -1);
+    }
+
 	return mmap_region(file, addr, len, flags, vm_flags, pgoff);
 }
 
@@ -1361,6 +1386,29 @@ munmap_back:
 		if (pgprot_val(pprot) == pgprot_val(pgprot_noncached(pprot)))
 			vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	}
+
+    if (unlikely(waydroid_mmap_dbg_task())) {
+	pr_emerg("WMMAP: before vma_link comm=%s pid=%d vma=%p start=%lx end=%lx flags=%lx pgoff=%lx file=%s\n",
+	     current->comm, task_pid_nr(current),
+	     vma, vma->vm_start, vma->vm_end,
+	     vma->vm_flags, vma->vm_pgoff,
+	     waydroid_mmap_file_name(vma->vm_file));
+
+	pr_emerg("WMMAP: prev=%p rb_link=%p rb_link_val=%p rb_parent=%p root=%p rootnode=%p map_count=%d\n",
+	     prev, rb_link, rb_link ? *rb_link : NULL,
+	     rb_parent, &mm->mm_rb, mm->mm_rb.rb_node,
+	     mm->map_count);
+
+	if (prev)
+	    pr_emerg("WMMAP: prev range=%lx-%lx flags=%lx file=%s\n",
+		 prev->vm_start, prev->vm_end, prev->vm_flags,
+		 waydroid_mmap_file_name(prev->vm_file));
+
+	if (rb_parent)
+	    pr_emerg("WMMAP: rb_parent left=%p right=%p parent_color=%lx\n",
+		 rb_parent->rb_left, rb_parent->rb_right,
+		 rb_parent->rb_parent_color);
+    }
 
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 	file = vma->vm_file;

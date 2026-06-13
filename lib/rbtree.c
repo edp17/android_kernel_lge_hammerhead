@@ -22,6 +22,7 @@
 
 #include <linux/rbtree.h>
 #include <linux/export.h>
+#include <linux/sched.h>
 
 static void __rb_rotate_left(struct rb_node *node, struct rb_root *root)
 {
@@ -77,6 +78,26 @@ void rb_insert_color(struct rb_node *node, struct rb_root *root)
 	{
 		gparent = rb_parent(parent);
 
+	if (unlikely(!gparent)) {
+	    pr_emerg("RBDBG: NULL gparent comm=%s pid=%d node=%p parent=%p root=%p rootnode=%p\n",
+		 current->comm, task_pid_nr(current),
+		 node, parent, root, root ? root->rb_node : NULL);
+	    dump_stack();
+	    break;
+	}
+
+	if (unlikely(parent != gparent->rb_left &&
+	         parent != gparent->rb_right)) {
+	    pr_emerg("RBDBG: parent is not child of gparent comm=%s pid=%d\n",
+		 current->comm, task_pid_nr(current));
+	    pr_emerg("RBDBG: node=%p parent=%p gparent=%p root=%p rootnode=%p\n",
+		 node, parent, gparent, root, root ? root->rb_node : NULL);
+	    pr_emerg("RBDBG: gparent left=%p right=%p parent_color=%lx\n",
+		 gparent->rb_left, gparent->rb_right,
+		 gparent->rb_parent_color);
+	    dump_stack();
+	}
+
 		if (parent == gparent->rb_left)
 		{
 			{
@@ -127,6 +148,19 @@ void rb_insert_color(struct rb_node *node, struct rb_root *root)
 
 			rb_set_black(parent);
 			rb_set_red(gparent);
+
+		if (unlikely(!gparent->rb_right)) {
+		    pr_emerg("RBDBG: about to rotate-left with NULL right child comm=%s pid=%d\n",
+			 current->comm, task_pid_nr(current));
+		    pr_emerg("RBDBG: node=%p parent=%p gparent=%p root=%p rootnode=%p\n",
+			 node, parent, gparent, root,
+			 root ? root->rb_node : NULL);
+		    pr_emerg("RBDBG: gparent left=%p right=%p parent_color=%lx\n",
+			 gparent->rb_left, gparent->rb_right,
+			 gparent->rb_parent_color);
+		    dump_stack();
+		}
+
 			__rb_rotate_left(gparent, root);
 		}
 	}
