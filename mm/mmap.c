@@ -518,6 +518,34 @@ int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	long adjust_next = 0;
 	int remove_next = 0;
 
+    if (unlikely(waydroid_mmap_dbg_task())) {
+	pr_emerg("VMAADJ: enter comm=%s pid=%d vma=%p old=%lx-%lx req=%lx-%lx pgoff=%lx insert=%p prev=%p next=%p next_range=%lx-%lx\n",
+	     current->comm, current->pid,
+	     vma,
+	     vma->vm_start, vma->vm_end,
+	     start, end,
+	     (unsigned long)pgoff,
+	     insert,
+	     vma->vm_prev,
+	     next,
+	     next ? next->vm_start : 0UL,
+	     next ? next->vm_end : 0UL);
+
+	if (unlikely(start > end ||
+	         vma->vm_start > vma->vm_end ||
+	         (next && next->vm_start > next->vm_end))) {
+	    pr_emerg("VMAADJ-BAD-ENTER: vma=%p old=%lx-%lx req=%lx-%lx next=%p next_range=%lx-%lx\n",
+		 vma,
+		 vma->vm_start, vma->vm_end,
+		 start, end,
+		 next,
+		 next ? next->vm_start : 0UL,
+		 next ? next->vm_end : 0UL);
+	    dump_stack();
+	    BUG();
+	}
+    }
+
 	if (next && !insert) {
 		struct vm_area_struct *exporter = NULL;
 
@@ -604,6 +632,30 @@ again:			remove_next = 1 + (end > next->vm_end);
 		next->vm_start += adjust_next << PAGE_SHIFT;
 		next->vm_pgoff += adjust_next;
 	}
+
+    if (unlikely(waydroid_mmap_dbg_task())) {
+	pr_emerg("VMAADJ: fields-updated comm=%s pid=%d vma=%p now=%lx-%lx next=%p next_now=%lx-%lx adjust_next=%ld remove_next=%d\n",
+	     current->comm, current->pid,
+	     vma,
+	     vma->vm_start, vma->vm_end,
+	     next,
+	     next ? next->vm_start : 0UL,
+	     next ? next->vm_end : 0UL,
+	     adjust_next, remove_next);
+
+	if (unlikely(vma->vm_start > vma->vm_end ||
+	         (next && next->vm_start > next->vm_end))) {
+	    pr_emerg("VMAADJ-BAD-AFTER: vma=%p now=%lx-%lx next=%p next_now=%lx-%lx adjust_next=%ld remove_next=%d\n",
+		 vma,
+		 vma->vm_start, vma->vm_end,
+		 next,
+		 next ? next->vm_start : 0UL,
+		 next ? next->vm_end : 0UL,
+		 adjust_next, remove_next);
+	    dump_stack();
+	    BUG();
+	}
+    }
 
 	if (root) {
 		if (adjust_next)
@@ -831,12 +883,44 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
  			mpol_equal(policy, vma_policy(next)) &&
 			can_vma_merge_before(next, vm_flags, anon_vma,
 					file, pgoff+pglen, anon_name)) {
-		if (prev && addr < prev->vm_end)	/* case 4 */
-			err = vma_adjust(prev, prev->vm_start,
-				addr, prev->vm_pgoff, NULL);
-		else					/* cases 3, 8 */
-			err = vma_adjust(area, addr, next->vm_end,
-				next->vm_pgoff - pglen, NULL);
+
+	if (prev && addr < prev->vm_end) { /* case 4 */
+	    if (unlikely(waydroid_mmap_dbg_task())) {
+		pr_emerg("VMAMERGE: case4 comm=%s pid=%d prev=%p prev_range=%lx-%lx addr=%lx end=%lx area=%p next=%p next_range=%lx-%lx\n",
+		     current->comm, current->pid,
+		     prev,
+		     prev->vm_start, prev->vm_end,
+		     addr, end,
+		     area, next,
+		     next ? next->vm_start : 0UL,
+		     next ? next->vm_end : 0UL);
+
+		if (unlikely(addr < prev->vm_start)) {
+		    pr_emerg("VMAMERGE-BAD-CASE4: addr=%lx is below prev->vm_start=%lx; refusing to create inverted VMA\n",
+			 addr, prev->vm_start);
+		    dump_stack();
+		    BUG();
+		}
+	    }
+
+	    err = vma_adjust(prev, prev->vm_start,
+		     addr, prev->vm_pgoff, NULL);
+	} else { /* cases 3, 8 */
+	    if (unlikely(waydroid_mmap_dbg_task()))
+		pr_emerg("VMAMERGE: case3or8 comm=%s pid=%d area=%p area_range=%lx-%lx addr=%lx end=%lx next=%p next_range=%lx-%lx\n",
+		     current->comm, current->pid,
+		     area,
+		     area ? area->vm_start : 0UL,
+		     area ? area->vm_end : 0UL,
+		     addr, end,
+		     next,
+		     next ? next->vm_start : 0UL,
+		     next ? next->vm_end : 0UL);
+
+	    err = vma_adjust(area, addr, next->vm_end,
+		     next->vm_pgoff - pglen, NULL);
+	}
+
 		if (err)
 			return NULL;
 		khugepaged_enter_vma_merge(area);
