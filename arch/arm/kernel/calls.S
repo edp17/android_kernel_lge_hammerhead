@@ -1,4 +1,4 @@
-all)/*
+/*
  *  linux/arch/arm/kernel/calls.S
  *
  *  Copyright (C) 1995-2005 Russell King
