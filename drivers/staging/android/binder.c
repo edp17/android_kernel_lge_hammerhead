@@ -2414,12 +2414,11 @@ static int binder_thread_write(struct binder_proc *proc,
 			binder_uintptr_t cookie;
 			struct binder_node *node;
 
-			if (copy_from_user(&node_ptr, ptr, sizeof(node_ptr)))
-			    return -EFAULT;
+			if (get_user(node_ptr, (binder_uintptr_t __user *)ptr))
+				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
-			
-			if (copy_from_user(&cookie, ptr, sizeof(cookie)))
-			    return -EFAULT;
+			if (get_user(cookie, (binder_uintptr_t __user *)ptr))
+				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
 			node = binder_get_node(proc, node_ptr);
 			if (node == NULL) {
@@ -2476,8 +2475,8 @@ static int binder_thread_write(struct binder_proc *proc,
 			binder_uintptr_t data_ptr;
 			struct binder_buffer *buffer;
 
-			if (copy_from_user(&data_ptr, ptr, sizeof(data_ptr)))
-			    return -EFAULT;
+			if (get_user(data_ptr, (binder_uintptr_t __user *)ptr))
+				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
 
 			buffer = binder_buffer_lookup(proc, data_ptr);
@@ -2582,8 +2581,8 @@ static int binder_thread_write(struct binder_proc *proc,
 			if (get_user(target, (uint32_t __user *)ptr))
 				return -EFAULT;
 			ptr += sizeof(uint32_t);
-			if (copy_from_user(&cookie, ptr, sizeof(cookie)))
-			    return -EFAULT;
+			if (get_user(cookie, (binder_uintptr_t __user *)ptr))
+				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
 			ref = binder_get_ref(proc, target, false);
 			if (ref == NULL) {
@@ -2664,8 +2663,8 @@ static int binder_thread_write(struct binder_proc *proc,
 			struct binder_work *w;
 			binder_uintptr_t cookie;
 			struct binder_ref_death *death = NULL;
-			if (copy_from_user(&cookie, ptr, sizeof(cookie)))
-			    return -EFAULT;
+			if (get_user(cookie, (binder_uintptr_t __user *)ptr))
+				return -EFAULT;
 
 			ptr += sizeof(cookie);
 			list_for_each_entry(w, &proc->delivered_death, entry) {
