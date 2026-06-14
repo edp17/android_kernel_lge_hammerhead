@@ -1,4 +1,4 @@
-/*
+all)/*
  *  linux/arch/arm/kernel/calls.S
  *
  *  Copyright (C) 1995-2005 Russell King
@@ -390,9 +390,10 @@
 		CALL(sys_ni_syscall)
 		CALL(sys_ni_syscall)
 /* 380 */	CALL(sys_ni_syscall)
-		CALL(sys_ni_syscall)
-		CALL(sys_ni_syscall)
-		CALL(sys_seccomp)
+	CALL(sys_ni_syscall)
+	CALL(sys_ni_syscall)
+	CALL(sys_seccomp)
+	CALL(sys_getrandom)
 #ifndef syscalls_counted
 .equ syscalls_padding, ((NR_syscalls + 3) & ~3) - NR_syscalls
 #define syscalls_counted

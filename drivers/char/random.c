@@ -255,6 +255,7 @@
 #include <linux/fips.h>
 #include <linux/ptrace.h>
 #include <linux/kmemcheck.h>
+#include <linux/syscalls.h>
 
 #ifdef CONFIG_GENERIC_HARDIRQS
 # include <linux/irq.h>
@@ -392,6 +393,7 @@ static struct poolinfo {
  */
 static DECLARE_WAIT_QUEUE_HEAD(random_read_wait);
 static DECLARE_WAIT_QUEUE_HEAD(random_write_wait);
+static DECLARE_WAIT_QUEUE_HEAD(urandom_init_wait);
 static struct fasync_struct *fasync;
 
 #if 0
@@ -594,9 +596,13 @@ retry:
 		goto retry;
 
 	if (!r->initialized && nbits > 0) {
-		r->entropy_total += nbits;
-		if (r->entropy_total > 128)
-			r->initialized = 1;
+	    r->entropy_total += nbits;
+	    if (r->entropy_total > 128) {
+		r->initialized = 1;
+
+		if (r == &nonblocking_pool)
+		    wake_up_all(&urandom_init_wait);
+	    }
 	}
 
 	/* should we wake readers? */
@@ -1094,60 +1100,71 @@ void rand_initialize_disk(struct gendisk *disk)
 #endif
 
 static ssize_t
-random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+_random_read(int nonblock, char __user *buf, size_t nbytes)
 {
-	ssize_t n, retval = 0, count = 0;
+    ssize_t n, retval = 0, count = 0;
 
-	if (nbytes == 0)
-		return 0;
+    if (nbytes == 0)
+	return 0;
 
-	while (nbytes > 0) {
-		n = nbytes;
-		if (n > SEC_XFER_SIZE)
-			n = SEC_XFER_SIZE;
+    while (nbytes > 0) {
+	n = nbytes;
+	if (n > SEC_XFER_SIZE)
+	    n = SEC_XFER_SIZE;
 
-		DEBUG_ENT("reading %d bits\n", n*8);
+	DEBUG_ENT("reading %d bits\n", n * 8);
 
-		n = extract_entropy_user(&blocking_pool, buf, n);
+	n = extract_entropy_user(&blocking_pool, buf, n);
 
-		DEBUG_ENT("read got %d bits (%d still needed)\n",
-			  n*8, (nbytes-n)*8);
+	DEBUG_ENT("read got %d bits (%d still needed)\n",
+	      n * 8, (nbytes - n) * 8);
 
-		if (n == 0) {
-			if (file->f_flags & O_NONBLOCK) {
-				retval = -EAGAIN;
-				break;
-			}
+	if (n == 0) {
+	    if (nonblock) {
+		retval = -EAGAIN;
+		break;
+	    }
 
-			DEBUG_ENT("sleeping?\n");
+	    DEBUG_ENT("sleeping?\n");
 
-			wait_event_interruptible(random_read_wait,
-				input_pool.entropy_count >=
-						 random_read_wakeup_thresh);
+	    wait_event_interruptible(random_read_wait,
+		input_pool.entropy_count >=
+		    random_read_wakeup_thresh);
 
-			DEBUG_ENT("awake\n");
+	    DEBUG_ENT("awake\n");
 
-			if (signal_pending(current)) {
-				retval = -ERESTARTSYS;
-				break;
-			}
+	    if (signal_pending(current)) {
+		retval = -ERESTARTSYS;
+		break;
+	    }
 
-			continue;
-		}
-
-		if (n < 0) {
-			retval = n;
-			break;
-		}
-		count += n;
-		buf += n;
-		nbytes -= n;
-		break;		/* This break makes the device work */
-				/* like a named pipe */
+	    continue;
 	}
 
-	return (count ? count : retval);
+	if (n < 0) {
+	    retval = n;
+	    break;
+	}
+
+	count += n;
+	buf += n;
+	nbytes -= n;
+
+	/*
+	 * This break makes the device work like a named pipe.
+	 */
+	break;
+    }
+
+    return count ? count : retval;
 }
+
+static ssize_t
+random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+{
+    return _random_read(file->f_flags & O_NONBLOCK, buf, nbytes);
+}
+
 
 static ssize_t
 urandom_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
@@ -1274,6 +1291,31 @@ const struct file_operations urandom_fops = {
 	.fasync = random_fasync,
 	.llseek = noop_llseek,
 };
+SYSCALL_DEFINE3(getrandom, char __user *, buf, size_t, count,
+	unsigned int, flags)
+{
+    if (flags & ~(GRND_NONBLOCK | GRND_RANDOM))
+	return -EINVAL;
+
+    if (count > INT_MAX)
+	count = INT_MAX;
+
+    if (flags & GRND_RANDOM)
+	return _random_read(flags & GRND_NONBLOCK, buf, count);
+
+    if (unlikely(nonblocking_pool.initialized == 0)) {
+	if (flags & GRND_NONBLOCK)
+	    return -EAGAIN;
+
+	wait_event_interruptible(urandom_init_wait,
+		     nonblocking_pool.initialized);
+
+	if (signal_pending(current))
+	    return -ERESTARTSYS;
+    }
+
+    return urandom_read(NULL, buf, count, NULL);
+}
 
 /***************************************************************
  * Random UUID interface
