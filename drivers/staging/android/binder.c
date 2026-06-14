@@ -98,14 +98,14 @@ BINDER_DEBUG_ENTRY(proc);
 #define BINDER_SMALL_BUF_SIZE (PAGE_SIZE * 64)
 
 static inline int binder_get_user_uintptr(binder_uintptr_t *value,
-		      binder_uintptr_t user_ptr)
+		      const void __user *user_ptr)
 {
 #ifdef BINDER_IPC_32BIT
     return get_user(*value,
-	    (binder_uintptr_t __user *)user_ptr);
+	    (const binder_uintptr_t __user *)user_ptr);
 #else
     return copy_from_user(value,
-	          (void __user *)user_ptr,
+	          user_ptr,
 	          sizeof(*value)) ? -EFAULT : 0;
 #endif
 }
@@ -2684,7 +2684,7 @@ static int binder_thread_write(struct binder_proc *proc,
 			struct binder_work *w;
 			binder_uintptr_t cookie;
 			struct binder_ref_death *death = NULL;
-			if (get_user(cookie, (binder_uintptr_t __user *)ptr))
+			if (binder_get_user_uintptr(&cookie, ptr))
 				return -EFAULT;
 
 			ptr += sizeof(cookie);
