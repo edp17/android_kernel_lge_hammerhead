@@ -41,6 +41,14 @@
 #include "binder.h"
 #include "binder_trace.h"
 
+#ifndef BINDER_DRIVER_NAME
+#define BINDER_DRIVER_NAME "binder"
+#endif
+
+#ifndef BINDER_DEVICE_CONFIG
+#define BINDER_DEVICE_CONFIG CONFIG_ANDROID_BINDER_DEVICES
+#endif
+
 #ifndef SIZE_MAX
 #define SIZE_MAX (~(size_t)0)
 #endif
@@ -89,6 +97,19 @@ BINDER_DEBUG_ENTRY(proc);
 
 #define BINDER_SMALL_BUF_SIZE (PAGE_SIZE * 64)
 
+static inline int binder_get_user_uintptr(binder_uintptr_t *value,
+		      binder_uintptr_t user_ptr)
+{
+#ifdef BINDER_IPC_32BIT
+    return get_user(*value,
+	    (binder_uintptr_t __user *)user_ptr);
+#else
+    return copy_from_user(value,
+	          (void __user *)user_ptr,
+	          sizeof(*value)) ? -EFAULT : 0;
+#endif
+}
+
 enum {
 	BINDER_DEBUG_USER_ERROR             = 1U << 0,
 	BINDER_DEBUG_FAILED_TRANSACTION     = 1U << 1,
@@ -114,7 +135,7 @@ module_param_named(debug_mask, binder_debug_mask, uint, S_IWUSR | S_IRUGO);
 static bool binder_debug_no_lock;
 module_param_named(proc_no_lock, binder_debug_no_lock, bool, S_IWUSR | S_IRUGO);
 
-static char *binder_devices_param = CONFIG_ANDROID_BINDER_DEVICES;
+static char *binder_devices_param = BINDER_DEVICE_CONFIG;
 module_param_named(devices, binder_devices_param, charp, S_IRUGO);
 
 static DECLARE_WAIT_QUEUE_HEAD(binder_user_error_wait);
@@ -2414,10 +2435,10 @@ static int binder_thread_write(struct binder_proc *proc,
 			binder_uintptr_t cookie;
 			struct binder_node *node;
 
-			if (get_user(node_ptr, (binder_uintptr_t __user *)ptr))
+			if (binder_get_user_uintptr(&node_ptr, ptr))
 				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
-			if (get_user(cookie, (binder_uintptr_t __user *)ptr))
+			if (binder_get_user_uintptr(&cookie, ptr))
 				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
 			node = binder_get_node(proc, node_ptr);
@@ -2475,7 +2496,7 @@ static int binder_thread_write(struct binder_proc *proc,
 			binder_uintptr_t data_ptr;
 			struct binder_buffer *buffer;
 
-			if (get_user(data_ptr, (binder_uintptr_t __user *)ptr))
+			if (binder_get_user_uintptr(&data_ptr, ptr))
 				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
 
@@ -2581,7 +2602,7 @@ static int binder_thread_write(struct binder_proc *proc,
 			if (get_user(target, (uint32_t __user *)ptr))
 				return -EFAULT;
 			ptr += sizeof(uint32_t);
-			if (get_user(cookie, (binder_uintptr_t __user *)ptr))
+			if (binder_get_user_uintptr(&cookie, ptr))
 				return -EFAULT;
 			ptr += sizeof(binder_uintptr_t);
 			ref = binder_get_ref(proc, target, false);
@@ -4227,11 +4248,11 @@ static int __init binder_init(void)
 	struct binder_device *device;
 	struct hlist_node *node, *tmp;
 
-	binder_deferred_workqueue = create_singlethread_workqueue("binder");
+	binder_deferred_workqueue = create_singlethread_workqueue(BINDER_DRIVER_NAME);
 	if (!binder_deferred_workqueue)
 		return -ENOMEM;
 
-	binder_debugfs_dir_entry_root = debugfs_create_dir("binder", NULL);
+	binder_debugfs_dir_entry_root = debugfs_create_dir(BINDER_DRIVER_NAME, NULL);
 	if (binder_debugfs_dir_entry_root)
 		binder_debugfs_dir_entry_proc = debugfs_create_dir("proc",
 						 binder_debugfs_dir_entry_root);
@@ -4299,7 +4320,9 @@ err_alloc_device_names_failed:
 
 device_initcall(binder_init);
 
+#ifndef BINDER_NO_TRACEPOINT_DEFINITIONS
 #define CREATE_TRACE_POINTS
 #include "binder_trace.h"
+#endif
 
 MODULE_LICENSE("GPL v2");

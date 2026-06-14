@@ -26,6 +26,25 @@ config ANDROID_BINDER_DEVICES
     help
       Default value for the binder.devices parameter.
 
+config ANDROID_BINDER_IPC_V8
+    bool "Second Android Binder IPC driver using protocol 8"
+    depends on ANDROID_BINDER_IPC
+    default n
+    help
+      Build a second Binder driver instance using protocol 8 while
+      keeping the primary Binder driver compatible with old 32-bit
+      Android userspace.
+
+      This is intended for Waydroid on systems where the host
+      Android adaptation still requires Binder protocol 7.
+
+config ANDROID_BINDER_V8_DEVICES
+    string "Android Binder protocol 8 devices"
+    depends on ANDROID_BINDER_IPC_V8
+    default "puddlejumper,hwpuddlejumper,vndpuddlejumper"
+    help
+      Device nodes registered by the protocol 8 Binder instance.
+
 config ASHMEM
 	bool "Enable the Anonymous Shared Memory Subsystem"
 	default n

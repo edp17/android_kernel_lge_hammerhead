@@ -20,7 +20,8 @@
 #ifndef _LINUX_BINDER_H
 #define _LINUX_BINDER_H
 
-#ifdef CONFIG_ANDROID_BINDER_IPC_32BIT
+#if defined(CONFIG_ANDROID_BINDER_IPC_32BIT) && \
+    !defined(BINDER_FORCE_PROTOCOL_8)
 #define BINDER_IPC_32BIT 1
 #endif
 
