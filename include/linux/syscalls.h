@@ -863,4 +863,6 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
 
 asmlinkage long sys_getrandom(char __user *buf, size_t count,
 	          unsigned int flags);
+asmlinkage long sys_memfd_create(const char __user *uname,
+				 unsigned int flags);
 #endif
