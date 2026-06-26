@@ -68,6 +68,11 @@ struct alarm {
 void alarm_init(struct alarm *alarm,
 	enum android_alarm_type type, void (*function)(struct alarm *));
 void alarm_start_range(struct alarm *alarm, ktime_t start, ktime_t end);
+void android_alarm_start(struct alarm *alarm, ktime_t start);
+void android_alarm_start_relative(struct alarm *alarm, ktime_t start);
+void android_alarm_restart(struct alarm *alarm);
+u64 android_alarm_forward_now(struct alarm *alarm, ktime_t interval);
+ktime_t android_alarm_expires_remaining(const struct alarm *alarm);
 int alarm_try_to_cancel(struct alarm *alarm);
 int alarm_cancel(struct alarm *alarm);
 void set_power_on_alarm(long secs);

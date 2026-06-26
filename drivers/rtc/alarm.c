@@ -188,6 +188,76 @@ void alarm_start_range(struct alarm *alarm, ktime_t start, ktime_t end)
 	spin_unlock_irqrestore(&alarm_slock, flags);
 }
 
+/*
+ * Timerfd compatibility helpers.
+ *
+ * CLOCK_REALTIME_ALARM uses the Android RTC wakeup queue. The Android
+ * elapsed-realtime wakeup queue provides CLOCK_BOOTTIME_ALARM semantics:
+ * it advances across suspend and is insulated from wall-clock changes.
+ */
+static ktime_t android_alarm_gettime(enum android_alarm_type type)
+{
+	switch (type) {
+	case ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP:
+	case ANDROID_ALARM_ELAPSED_REALTIME:
+		return alarm_get_elapsed_realtime();
+	case ANDROID_ALARM_SYSTEMTIME:
+		return ktime_get();
+	default:
+		return ktime_get_real();
+	}
+}
+
+void android_alarm_start(struct alarm *alarm, ktime_t start)
+{
+	alarm_start_range(alarm, start, start);
+}
+
+void android_alarm_start_relative(struct alarm *alarm, ktime_t start)
+{
+	android_alarm_start(alarm,
+			    ktime_add(android_alarm_gettime(alarm->type), start));
+}
+
+void android_alarm_restart(struct alarm *alarm)
+{
+	android_alarm_start(alarm, alarm->expires);
+}
+
+u64 android_alarm_forward_now(struct alarm *alarm, ktime_t interval)
+{
+	ktime_t now = android_alarm_gettime(alarm->type);
+	ktime_t delta = ktime_sub(now, alarm->expires);
+	u64 overrun = 1;
+
+	if (delta.tv64 < 0)
+		return 0;
+
+	if (unlikely(delta.tv64 >= interval.tv64)) {
+		s64 incr = ktime_to_ns(interval);
+
+		overrun = ktime_divns(delta, incr);
+		alarm->expires =
+			ktime_add_ns(alarm->expires, incr * overrun);
+		alarm->softexpires = alarm->expires;
+
+		if (alarm->expires.tv64 > now.tv64)
+			return overrun;
+
+		overrun++;
+	}
+
+	alarm->expires = ktime_add(alarm->expires, interval);
+	alarm->softexpires = alarm->expires;
+	return overrun;
+}
+
+ktime_t android_alarm_expires_remaining(const struct alarm *alarm)
+{
+	return ktime_sub(alarm->expires,
+			 android_alarm_gettime(alarm->type));
+}
+
 /**
  * alarm_try_to_cancel - try to deactivate an alarm
  * @alarm:	alarm to stop
